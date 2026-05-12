@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculadora BTC</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .app {
+      max-width: 420px;
+      margin: auto;
+      background: white;
+      padding: 25px;
+      border-radius: 18px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    }
+
+    h1 {
+      color: #222;
+    }
+
+    input {
+      width: 90%;
+      padding: 14px;
+      margin: 10px 0;
+      font-size: 18px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      width: 95%;
+      padding: 15px;
+      margin-top: 15px;
+      font-size: 20px;
+      font-weight: bold;
+      background: #111827;
+      color: white;
+      border: none;
+      border-radius: 12px;
+    }
+
+    .dato {
+      font-size: 20px;
+      margin-top: 15px;
+      color: #333;
+    }
+
+    #resultado {
+      margin-top: 25px;
+      font-size: 34px;
+      font-weight: bold;
+    }
+
+    .ganancia {
+      color: #0077ff;
+    }
+
+    .perdida {
+      color: #d00000;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="app">
+    <h1>Calculadora BTC</h1>
+
+    <input id="btc" type="number" step="0.00000001" value="0.05709716" placeholder="Cantidad BTC">
+
+    <input id="compra" type="number" value="102000" placeholder="Precio de compra por BTC">
+
+    <button onclick="calcular()">Consultar BTC</button>
+
+    <div id="precio" class="dato"></div>
+    <div id="invertido" class="dato"></div>
+    <div id="actual" class="dato"></div>
+
+    <div id="resultado"></div>
+  </div>
+
+  <script>
+    async function calcular() {
+      const btc = parseFloat(document.getElementById("btc").value);
+      const compra = parseFloat(document.getElementById("compra").value);
+
+      if (isNaN(btc) || isNaN(compra)) {
+        alert("Ingresa valores válidos.");
+        return;
+      }
+
+      try {
+        const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd");
+        const data = await r.json();
+        const precioActual = data.bitcoin.usd;
+
+        const invertido = btc * compra;
+        const valorActual = btc * precioActual;
+        const diferencia = valorActual - invertido;
+        const porcentaje = (diferencia / invertido) * 100;
+
+        document.getElementById("precio").innerText =
+          "BTC actual: $" + precioActual.toLocaleString("en-US");
+
+        document.getElementById("invertido").innerText =
+          "Invertido: $" + invertido.toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          });
+
+        document.getElementById("actual").innerText =
+          "Valor actual: $" + valorActual.toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          });
+
+        const res = document.getElementById("resultado");
+        res.className = diferencia >= 0 ? "ganancia" : "perdida";
+
+        const tipo = diferencia >= 0 ? "Ganancia" : "Pérdida";
+
+        res.innerText =
+          `${tipo}: $${Math.abs(diferencia).toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          })} (${porcentaje.toFixed(2)}%)`;
+
+      } catch (error) {
+        alert("Error al conectar con la API. Intenta de nuevo.");
+      }
+    }
+  </script>
+
+</body>
+</html>

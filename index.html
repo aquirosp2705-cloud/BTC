@@ -3,68 +3,180 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111827">
   <title>Calculadora BTC</title>
 
   <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #222222;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --btn: #111827;
+      --btn-text: #ffffff;
+      --ganancia: #0077ff;
+      --perdida: #d00000;
+      --aviso-bg: #fff4e5;
+      --aviso-text: #8a4b00;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1115;
+        --card: #1a1d24;
+        --text: #f3f4f6;
+        --muted: #9ca3af;
+        --border: #374151;
+        --btn: #f7931a;
+        --btn-text: #111827;
+        --ganancia: #4da3ff;
+        --perdida: #ff5c5c;
+        --aviso-bg: #3a2a12;
+        --aviso-text: #ffc978;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       font-family: Arial, sans-serif;
-      background: #f4f6f8;
-      padding: 20px;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 20px 16px;
       text-align: center;
     }
 
     .app {
       max-width: 420px;
       margin: auto;
-      background: white;
-      padding: 25px;
+      background: var(--card);
+      padding: 25px 20px;
       border-radius: 18px;
       box-shadow: 0 4px 15px rgba(0,0,0,0.15);
     }
 
     h1 {
-      color: #222;
+      margin-top: 0;
+    }
+
+    label {
+      display: block;
+      text-align: left;
+      font-size: 14px;
+      color: var(--muted);
+      margin-top: 12px;
     }
 
     input {
-      width: 90%;
+      width: 100%;
       padding: 14px;
-      margin: 10px 0;
+      margin: 6px 0 0;
       font-size: 18px;
       border-radius: 10px;
-      border: 1px solid #ccc;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
     }
 
     button {
-      width: 95%;
+      width: 100%;
       padding: 15px;
-      margin-top: 15px;
+      margin-top: 20px;
       font-size: 20px;
       font-weight: bold;
-      background: #111827;
-      color: white;
+      background: var(--btn);
+      color: var(--btn-text);
       border: none;
       border-radius: 12px;
+      cursor: pointer;
     }
 
-    .dato {
-      font-size: 20px;
-      margin-top: 15px;
-      color: #333;
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .precio-actual {
+      font-size: 22px;
+      font-weight: bold;
+      margin-top: 22px;
+    }
+
+    .fuente {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 4px;
+      min-height: 16px;
+    }
+
+    .datos {
+      margin-top: 18px;
+      text-align: left;
+    }
+
+    .fila {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 17px;
+    }
+
+    .fila span:last-child {
+      font-weight: bold;
+      text-align: right;
     }
 
     #resultado {
-      margin-top: 25px;
-      font-size: 34px;
+      margin-top: 22px;
+      font-size: 30px;
       font-weight: bold;
+      overflow-wrap: anywhere;
+    }
+
+    #porcentaje {
+      font-size: 20px;
+      font-weight: bold;
+      margin-top: 4px;
     }
 
     .ganancia {
-      color: #0077ff;
+      color: var(--ganancia);
     }
 
     .perdida {
-      color: #d00000;
+      color: var(--perdida);
+    }
+
+    .aviso {
+      display: none;
+      margin-top: 18px;
+      padding: 12px;
+      border-radius: 10px;
+      background: var(--aviso-bg);
+      color: var(--aviso-text);
+      font-size: 15px;
+      text-align: left;
+    }
+
+    .aviso.visible {
+      display: block;
+    }
+
+    details {
+      margin-top: 20px;
+      text-align: left;
+      font-size: 15px;
+      color: var(--muted);
+    }
+
+    summary {
+      cursor: pointer;
     }
   </style>
 </head>
@@ -74,69 +186,304 @@
   <div class="app">
     <h1>Calculadora BTC</h1>
 
-    <input id="btc" type="number" step="0.00000001" value="0.05709716" placeholder="Cantidad BTC">
+    <label for="invertido">Dólares invertidos (USD)</label>
+    <input id="invertido" type="text" inputmode="decimal" autocomplete="off" value="5823.91" placeholder="Ej: 5823.91">
 
-    <input id="compra" type="number" value="102000" placeholder="Precio de compra por BTC">
+    <label for="promedio">Tipo de cambio promedio de compra (USD por BTC)</label>
+    <input id="promedio" type="text" inputmode="decimal" autocomplete="off" value="102000" placeholder="Ej: 102000">
 
-    <button onclick="calcular()">Consultar BTC</button>
+    <button id="consultar" type="button">Consultar BTC</button>
 
-    <div id="precio" class="dato"></div>
-    <div id="invertido" class="dato"></div>
-    <div id="actual" class="dato"></div>
+    <div id="precio" class="precio-actual"></div>
+    <div id="fuente" class="fuente"></div>
 
-    <div id="resultado"></div>
+    <div id="aviso" class="aviso" role="alert"></div>
+
+    <div id="datos" class="datos" hidden>
+      <div class="fila"><span>Invertido</span><span id="totalInvertido"></span></div>
+      <div class="fila"><span>Promedio de compra</span><span id="promedioUsado"></span></div>
+      <div class="fila"><span>BTC que tienes</span><span id="cantidad"></span></div>
+      <div class="fila"><span>Valor actual</span><span id="valorActual"></span></div>
+    </div>
+
+    <div id="resultado" aria-live="polite"></div>
+    <div id="porcentaje"></div>
+
+    <details id="manual">
+      <summary>¿No carga el precio? Ingrésalo manualmente</summary>
+      <label for="precioManual">Precio actual de BTC (USD)</label>
+      <input id="precioManual" type="text" inputmode="decimal" autocomplete="off" placeholder="Ej: 83000">
+    </details>
   </div>
 
   <script>
-    async function calcular() {
-      const btc = parseFloat(document.getElementById("btc").value);
-      const compra = parseFloat(document.getElementById("compra").value);
+    // Fuentes públicas de precio BTC/USD, todas con CORS abierto y sin API key.
+    // Se consultan por grupos: si ninguna del primer grupo responde, se prueba el siguiente.
+    const FUENTES = [
+      [
+        {
+          nombre: "Coinbase",
+          url: "https://api.coinbase.com/v2/prices/BTC-USD/spot",
+          leer: d => d.data.amount
+        },
+        {
+          nombre: "Kraken",
+          url: "https://api.kraken.com/0/public/Ticker?pair=XBTUSD",
+          leer: d => Object.values(d.result)[0].c[0]
+        },
+        {
+          nombre: "Bitstamp",
+          url: "https://www.bitstamp.net/api/v2/ticker/btcusd/",
+          leer: d => d.last
+        }
+      ],
+      [
+        {
+          nombre: "Gemini",
+          url: "https://api.gemini.com/v1/pubticker/btcusd",
+          leer: d => d.last
+        },
+        {
+          nombre: "mempool.space",
+          url: "https://mempool.space/api/v1/prices",
+          leer: d => d.USD
+        },
+        {
+          nombre: "Blockchain.com",
+          url: "https://blockchain.info/ticker",
+          leer: d => d.USD.last
+        },
+        {
+          nombre: "CoinGecko",
+          url: "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+          leer: d => d.bitcoin.usd
+        },
+        {
+          nombre: "Binance (USDT)",
+          url: "https://data-api.binance.vision/api/v3/ticker/price?symbol=BTCUSDT",
+          leer: d => d.price
+        }
+      ]
+    ];
 
-      if (isNaN(btc) || isNaN(compra)) {
-        alert("Ingresa valores válidos.");
+    const TIEMPO_MAXIMO_MS = 8000;
+    const REFRESCO_MS = 60000;
+    const CLAVE_GUARDADO = "calculadora-btc";
+
+    const $ = id => document.getElementById(id);
+
+    let ultimoPrecio = null;
+    let consultando = false;
+
+    const usd = valor => valor.toLocaleString("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+
+    // Equivalente a Promise.any, que no existe en iOS < 14 ni en Chrome < 85.
+    // Resuelve con la primera promesa exitosa y rechaza solo si fallan todas.
+    const primeraExitosa = promesas => new Promise((resolver, rechazar) => {
+      let pendientes = promesas.length;
+      promesas.forEach(p => p.then(resolver, () => {
+        if (--pendientes === 0) rechazar(new Error("Ninguna fuente del grupo respondió"));
+      }));
+    });
+
+    async function consultarFuente(fuente) {
+      const control = typeof AbortController === "function" ? new AbortController() : null;
+      const temporizador = setTimeout(() => { if (control) control.abort(); }, TIEMPO_MAXIMO_MS);
+      try {
+        const r = await fetch(fuente.url, { cache: "no-store", signal: control ? control.signal : undefined });
+        if (!r.ok) throw new Error(fuente.nombre + " respondió " + r.status);
+        const precio = parseFloat(fuente.leer(await r.json()));
+        if (!Number.isFinite(precio) || precio < 1000 || precio > 10000000) {
+          throw new Error(fuente.nombre + " devolvió un precio inválido");
+        }
+        return { precio, fuente: fuente.nombre };
+      } finally {
+        clearTimeout(temporizador);
+      }
+    }
+
+    async function obtenerPrecio() {
+      for (const grupo of FUENTES) {
+        try {
+          return await primeraExitosa(grupo.map(consultarFuente));
+        } catch (e) {
+          // Ninguna fuente del grupo respondió; se intenta con el siguiente.
+        }
+      }
+      throw new Error("Ninguna fuente de precio respondió");
+    }
+
+    // Acepta coma o punto como separador decimal y de miles:
+    // "5823,91", "5823.91", "5.823,91", "5,823.91", "102.000" y "102,000" se leen bien.
+    function leerNumero(id) {
+      const texto = $(id).value.replace(/[\s$]/g, "");
+      if (!/^\d[\d.,]*$/.test(texto)) return NaN;
+      const i = Math.max(texto.lastIndexOf(","), texto.lastIndexOf("."));
+      let normal = texto;
+      if (i !== -1) {
+        const antes = texto.slice(0, i);
+        const despues = texto.slice(i + 1);
+        const otro = texto[i] === "," ? "." : ",";
+        // Un solo tipo de separador seguido de exactamente 3 dígitos es de miles ("102.000", "1,234,567").
+        // En cualquier otro caso el último separador es el decimal ("102000,5", "5.823,91").
+        const esMiles = despues.length === 3 && !antes.includes(otro) && antes[0] !== "0";
+        normal = esMiles ? texto.replace(/[.,]/g, "") : antes.replace(/[.,]/g, "") + "." + despues;
+      }
+      if (!/^\d+(\.\d*)?$/.test(normal)) return NaN;
+      return Number(normal);
+    }
+
+    function mostrarAviso(texto) {
+      const aviso = $("aviso");
+      aviso.textContent = texto;
+      aviso.classList.toggle("visible", Boolean(texto));
+    }
+
+    function limpiarResultado() {
+      $("datos").hidden = true;
+      $("resultado").textContent = "";
+      $("porcentaje").textContent = "";
+    }
+
+    function mostrarPrecio(precio, detalle) {
+      $("precio").textContent = "BTC actual: " + usd(precio);
+      $("fuente").textContent = detalle;
+    }
+
+    function calcular() {
+      guardarDatos();
+
+      const precioManual = leerNumero("precioManual");
+      const usarManual = precioManual > 0;
+      const precio = usarManual ? precioManual : ultimoPrecio && ultimoPrecio.precio;
+
+      if (usarManual) {
+        mostrarPrecio(precioManual, "Precio ingresado manualmente");
+      } else if (ultimoPrecio) {
+        mostrarPrecio(ultimoPrecio.precio,
+          "Fuente: " + ultimoPrecio.fuente + " · " + ultimoPrecio.hora.toLocaleTimeString("es-EC"));
+      }
+
+      if (!precio) {
+        $("precio").textContent = "";
+        $("fuente").textContent = "";
+        limpiarResultado();
         return;
       }
 
-      try {
-        const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd");
-        const data = await r.json();
-        const precioActual = data.bitcoin.usd;
+      const invertido = leerNumero("invertido");
+      const promedio = leerNumero("promedio");
 
-        const invertido = btc * compra;
-        const valorActual = btc * precioActual;
-        const diferencia = valorActual - invertido;
-        const porcentaje = (diferencia / invertido) * 100;
+      if (!(invertido > 0) || !(promedio > 0)) {
+        limpiarResultado();
+        $("resultado").className = "";
+        $("resultado").textContent = "Ingresa montos válidos mayores a cero.";
+        return;
+      }
 
-        document.getElementById("precio").innerText =
-          "BTC actual: $" + precioActual.toLocaleString("en-US");
+      // Se parte de (precio - promedio) para que el punto de equilibrio dé 0 exacto,
+      // sin residuos de punto flotante que lo muestren como pérdida.
+      const variacion = (precio - promedio) / promedio;
+      const cantidad = invertido / promedio;
+      const diferencia = invertido * variacion;
+      const valorActual = invertido + diferencia;
+      const porcentaje = variacion * 100;
+      const centavos = Math.round(diferencia * 100);
+      const clase = centavos > 0 ? "ganancia" : centavos < 0 ? "perdida" : "";
 
-        document.getElementById("invertido").innerText =
-          "Invertido: $" + invertido.toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-          });
+      $("totalInvertido").textContent = usd(invertido);
+      $("promedioUsado").textContent = usd(promedio);
+      $("cantidad").textContent = cantidad.toFixed(8) + " BTC";
+      $("valorActual").textContent = usd(valorActual);
+      $("datos").hidden = false;
 
-        document.getElementById("actual").innerText =
-          "Valor actual: $" + valorActual.toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-          });
+      $("resultado").className = clase;
+      $("porcentaje").className = clase;
 
-        const res = document.getElementById("resultado");
-        res.className = diferencia >= 0 ? "ganancia" : "perdida";
-
-        const tipo = diferencia >= 0 ? "Ganancia" : "Pérdida";
-
-        res.innerText =
-          `${tipo}: $${Math.abs(diferencia).toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-          })} (${porcentaje.toFixed(2)}%)`;
-
-      } catch (error) {
-        alert("Error al conectar con la API. Intenta de nuevo.");
+      if (centavos === 0) {
+        $("resultado").textContent = "Sin utilidad ni pérdida";
+        $("porcentaje").textContent = "0.00%";
+      } else {
+        $("resultado").textContent = (centavos > 0 ? "Utilidad: " : "Pérdida: ") + usd(Math.abs(diferencia));
+        $("porcentaje").textContent = (centavos > 0 ? "+" : "") + porcentaje.toFixed(2) + "%";
       }
     }
+
+    async function consultar() {
+      if (consultando) return;
+      consultando = true;
+
+      const boton = $("consultar");
+      boton.disabled = true;
+      boton.textContent = "Consultando…";
+
+      try {
+        const resultado = await obtenerPrecio();
+        // Si no había precio o el último intento falló, el precio manual era solo un respaldo: se descarta.
+        const veniaDeFallo = !ultimoPrecio || $("aviso").classList.contains("visible");
+        ultimoPrecio = { precio: resultado.precio, fuente: resultado.fuente, hora: new Date() };
+        mostrarAviso("");
+        if (veniaDeFallo) {
+          $("precioManual").value = "";
+          $("manual").open = false;
+        }
+      } catch (e) {
+        const hayManual = leerNumero("precioManual") > 0;
+        mostrarAviso(hayManual
+          ? "No se pudo actualizar el precio automático. Se usa el precio ingresado manualmente."
+          : ultimoPrecio
+            ? "No se pudo actualizar el precio. Se muestra el último obtenido."
+            : "No se pudo obtener el precio de BTC. Revisa tu conexión o ingresa el precio manualmente abajo.");
+        if (!ultimoPrecio && !hayManual) $("manual").open = true;
+      } finally {
+        consultando = false;
+        boton.disabled = false;
+        boton.textContent = "Consultar BTC";
+        calcular();
+      }
+    }
+
+    function guardarDatos() {
+      try {
+        localStorage.setItem(CLAVE_GUARDADO, JSON.stringify({
+          invertido: $("invertido").value,
+          promedio: $("promedio").value
+        }));
+      } catch (e) {
+        // Sin almacenamiento disponible (modo privado); no es crítico.
+      }
+    }
+
+    function cargarDatos() {
+      try {
+        const datos = JSON.parse(localStorage.getItem(CLAVE_GUARDADO));
+        if (datos) {
+          if (datos.invertido) $("invertido").value = datos.invertido;
+          if (datos.promedio) $("promedio").value = datos.promedio;
+        }
+      } catch (e) {
+        // Datos guardados ilegibles o almacenamiento bloqueado; se usan los valores por defecto.
+      }
+    }
+
+    $("consultar").addEventListener("click", consultar);
+    ["invertido", "promedio", "precioManual"].forEach(id => $(id).addEventListener("input", calcular));
+
+    setInterval(() => {
+      if (!document.hidden) consultar();
+    }, REFRESCO_MS);
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) consultar();
+    });
+
+    cargarDatos();
+    consultar();
   </script>
 
 </body>

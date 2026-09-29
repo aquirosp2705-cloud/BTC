@@ -178,6 +178,78 @@
     summary {
       cursor: pointer;
     }
+
+    .extremos {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+    }
+
+    .extremos-titulo {
+      font-size: 17px;
+      font-weight: bold;
+    }
+
+    .periodos {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    button.periodo {
+      width: auto;
+      margin: 0;
+      padding: 8px 14px;
+      font-size: 14px;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+    }
+
+    button.periodo.activo {
+      background: var(--btn);
+      color: var(--btn-text);
+      border-color: var(--btn);
+    }
+
+    /* Si los dos precios no caben lado a lado (pantallas de 320 px o texto agrandado), las tarjetas se apilan. */
+    .tarjetas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .tarjeta {
+      flex: 1 1 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: left;
+    }
+
+    .tarjeta .etiqueta {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .tarjeta .valor {
+      font-size: 19px;
+      font-weight: bold;
+      margin-top: 4px;
+      white-space: nowrap;
+    }
+
+    .tarjeta .cuando {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 4px;
+      min-height: 32px;
+      white-space: pre-line;
+    }
   </style>
 </head>
 
@@ -208,6 +280,29 @@
 
     <div id="resultado" aria-live="polite"></div>
     <div id="porcentaje"></div>
+
+    <section class="extremos">
+      <div class="extremos-titulo">Precio más bajo y más alto</div>
+      <div class="periodos" role="group" aria-label="Periodo">
+        <button type="button" class="periodo" data-periodo="86400">24 h</button>
+        <button type="button" class="periodo" data-periodo="604800">7 días</button>
+        <button type="button" class="periodo" data-periodo="2592000">30 días</button>
+        <button type="button" class="periodo" data-periodo="31536000">1 año</button>
+      </div>
+      <div class="tarjetas">
+        <div class="tarjeta">
+          <div class="etiqueta"><span class="perdida">▼</span> Más bajo</div>
+          <div id="minimoValor" class="valor">…</div>
+          <div id="minimoFecha" class="cuando"></div>
+        </div>
+        <div class="tarjeta">
+          <div class="etiqueta"><span class="ganancia">▲</span> Más alto</div>
+          <div id="maximoValor" class="valor">…</div>
+          <div id="maximoFecha" class="cuando"></div>
+        </div>
+      </div>
+      <div id="extremosFuente" class="fuente"></div>
+    </section>
 
     <details id="manual">
       <summary>¿No carga el precio? Ingrésalo manualmente</summary>
@@ -266,14 +361,57 @@
       ]
     ];
 
+    const INTERVALOS_BINANCE = {
+      60: "1m", 180: "3m", 300: "5m", 900: "15m", 1800: "30m", 3600: "1h",
+      7200: "2h", 14400: "4h", 21600: "6h", 28800: "8h", 43200: "12h", 86400: "1d"
+    };
+
+    // Fuentes de velas históricas para ubicar el precio más bajo y más alto de un periodo.
+    // intervalos: duración de vela en segundos (de menor a mayor); maxVelas: tope por consulta.
+    // leer() devuelve [{ t: inicio de la vela en segundos, bajo, alto }].
+    const HISTORICOS = [
+      {
+        nombre: "Coinbase",
+        intervalos: [60, 300, 900, 3600, 21600, 86400],
+        maxVelas: 300,
+        // El CDN de Coinbase guarda estas respuestas hasta 5 min; el parámetro "_" obliga a traer datos frescos.
+        url: (inicio, fin, g) => "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=" + g +
+          "&start=" + new Date(inicio * 1000).toISOString() + "&end=" + new Date(fin * 1000).toISOString() +
+          "&_=" + Date.now(),
+        leer: d => d.map(v => ({ t: v[0], bajo: v[1], alto: v[2] }))
+      },
+      {
+        nombre: "Bitstamp",
+        intervalos: [60, 180, 300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400],
+        maxVelas: 1000,
+        url: (inicio, fin, g) => "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=" + g + "&start=" + inicio +
+          "&limit=" + Math.min(1000, Math.ceil((fin - inicio) / g) + 1),
+        leer: d => d.data.ohlc.map(v => ({ t: Number(v.timestamp), bajo: Number(v.low), alto: Number(v.high) }))
+      },
+      {
+        nombre: "Binance (USDT)",
+        intervalos: [60, 180, 300, 900, 1800, 3600, 7200, 14400, 21600, 28800, 43200, 86400],
+        maxVelas: 1000,
+        url: (inicio, fin, g) => "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=" +
+          INTERVALOS_BINANCE[g] + "&startTime=" + inicio * 1000 + "&endTime=" + fin * 1000 + "&limit=1000",
+        leer: d => d.map(v => ({ t: v[0] / 1000, bajo: Number(v[3]), alto: Number(v[2]) }))
+      }
+    ];
+
+    const PERIODOS = [86400, 604800, 2592000, 31536000];
     const TIEMPO_MAXIMO_MS = 8000;
     const REFRESCO_MS = 60000;
+    const REFRESCO_EXTREMOS_MS = 5 * 60000;
     const CLAVE_GUARDADO = "calculadora-btc";
 
     const $ = id => document.getElementById(id);
 
     let ultimoPrecio = null;
     let consultando = false;
+    let periodoActual = PERIODOS[0];
+    let extremos = null;
+    let buscandoExtremos = false;
+    let solicitudExtremos = 0;
 
     const usd = valor => valor.toLocaleString("en-US", {
       style: "currency",
@@ -291,20 +429,24 @@
       }));
     });
 
-    async function consultarFuente(fuente) {
+    const precioValido = p => Number.isFinite(p) && p >= 1000 && p <= 10000000;
+
+    async function obtenerJSON(url) {
       const control = typeof AbortController === "function" ? new AbortController() : null;
       const temporizador = setTimeout(() => { if (control) control.abort(); }, TIEMPO_MAXIMO_MS);
       try {
-        const r = await fetch(fuente.url, { cache: "no-store", signal: control ? control.signal : undefined });
-        if (!r.ok) throw new Error(fuente.nombre + " respondió " + r.status);
-        const precio = parseFloat(fuente.leer(await r.json()));
-        if (!Number.isFinite(precio) || precio < 1000 || precio > 10000000) {
-          throw new Error(fuente.nombre + " devolvió un precio inválido");
-        }
-        return { precio, fuente: fuente.nombre };
+        const r = await fetch(url, { cache: "no-store", signal: control ? control.signal : undefined });
+        if (!r.ok) throw new Error(url + " respondió " + r.status);
+        return await r.json();
       } finally {
         clearTimeout(temporizador);
       }
+    }
+
+    async function consultarFuente(fuente) {
+      const precio = parseFloat(fuente.leer(await obtenerJSON(fuente.url)));
+      if (!precioValido(precio)) throw new Error(fuente.nombre + " devolvió un precio inválido");
+      return { precio, fuente: fuente.nombre };
     }
 
     async function obtenerPrecio() {
@@ -316,6 +458,171 @@
         }
       }
       throw new Error("Ninguna fuente de precio respondió");
+    }
+
+    // Velas de duración g entre inicio (incluido) y fin (excluido), en varias consultas si superan el tope.
+    async function velas(fuente, inicio, fin, g) {
+      const paso = (fuente.maxVelas - 1) * g;
+      const tramos = [];
+      for (let desde = inicio; desde < fin; desde += paso) tramos.push([desde, Math.min(fin, desde + paso)]);
+      const partes = await Promise.all(tramos.map(([a, b]) => obtenerJSON(fuente.url(a, b, g)).then(fuente.leer)));
+      return [].concat(...partes)
+        .filter(v => v.t >= inicio && v.t < fin && precioValido(v.bajo) && precioValido(v.alto))
+        .map(v => ({ t: v.t, bajo: v.bajo, alto: v.alto, g }));
+    }
+
+    // Como velas(), pero sin perder el tramo inicial: las APIs solo devuelven velas que empiezan en o después
+    // de "inicio", así que el trozo hasta la primera vela de duración g se cubre con velas más cortas.
+    async function velasCubriendo(fuente, inicio, fin, g) {
+      const corte = Math.min(fin, Math.ceil(inicio / g) * g);
+      const menor = corte > inicio &&
+        fuente.intervalos.find(i => i < g && (corte - inicio) / i < fuente.maxVelas - 1);
+      const [cabeza, cuerpo] = await Promise.all([
+        menor ? velasCubriendo(fuente, inicio, corte, menor) : [],
+        velas(fuente, corte, fin, g)
+      ]);
+      return cabeza.concat(cuerpo);
+    }
+
+    // Ante empates se queda con la vela más reciente: se busca el "último" mínimo o máximo.
+    function buscarExtremo(lista, campo, esMejor) {
+      let elegido = null;
+      for (const v of lista) {
+        if (!elegido || esMejor(v[campo], elegido[campo]) || (v[campo] === elegido[campo] && v.t > elegido.t)) {
+          elegido = v;
+        }
+      }
+      return elegido;
+    }
+
+    const esMenor = (a, b) => a < b;
+    const esMayor = (a, b) => a > b;
+
+    // Baja de temporalidad dentro de la vela extrema hasta velas de 1 minuto para dar la hora exacta.
+    // Si alguna consulta falla, se queda con la precisión que ya tenía.
+    async function afinar(fuente, vela, campo, esMejor) {
+      let actual = { t: vela.t, valor: vela[campo], g: vela.g };
+      while (true) {
+        const menor = fuente.intervalos.find(i => i < actual.g && actual.g / i < fuente.maxVelas - 1);
+        if (!menor) break;
+        let v;
+        try {
+          v = buscarExtremo(await velas(fuente, actual.t, actual.t + actual.g, menor), campo, esMejor);
+        } catch (e) {
+          break;
+        }
+        // Si las velas finas vienen incompletas y dan un valor menos extremo que la gruesa, no se reemplaza.
+        if (!v || esMejor(actual.valor, v[campo])) break;
+        actual = { t: v.t, valor: v[campo], g: menor };
+      }
+      return actual;
+    }
+
+    async function calcularExtremos(fuente, periodo) {
+      const fin = Math.floor(Date.now() / 1000);
+      const inicio = fin - periodo;
+      const g = fuente.intervalos.find(i => periodo / i < fuente.maxVelas - 1) ||
+        fuente.intervalos[fuente.intervalos.length - 1];
+      const lista = await velasCubriendo(fuente, inicio, fin, g);
+      // Si la fuente devuelve bastante menos historia de la pedida, se prueba con la siguiente.
+      if (lista.length < (periodo / g) * 0.8) throw new Error(fuente.nombre + " devolvió historia incompleta");
+      const [minimo, maximo] = await Promise.all([
+        afinar(fuente, buscarExtremo(lista, "bajo", esMenor), "bajo", esMenor),
+        afinar(fuente, buscarExtremo(lista, "alto", esMayor), "alto", esMayor)
+      ]);
+      return { minimo, maximo, fuente: fuente.nombre };
+    }
+
+    // El precio actual puede superar a las velas ya consultadas; se incorpora para que no quede incoherente.
+    function incluirPrecioActual() {
+      if (!extremos || !ultimoPrecio) return;
+      const actual = { t: Math.floor(ultimoPrecio.hora.getTime() / 1000), valor: ultimoPrecio.precio, g: 60 };
+      // Un precio anterior al inicio del periodo no puede ser su extremo (p. ej. tras horas con la pestaña oculta).
+      if (actual.t < Math.floor(extremos.obtenido / 1000) - extremos.periodo) return;
+      if (actual.valor < extremos.minimo.valor) extremos.minimo = actual;
+      if (actual.valor > extremos.maximo.valor) extremos.maximo = actual;
+    }
+
+    function diaLocal(fecha) {
+      const opciones = { weekday: "short", day: "numeric", month: "short" };
+      if (fecha.getFullYear() !== new Date().getFullYear()) opciones.year = "numeric";
+      return fecha.toLocaleDateString("es-EC", opciones);
+    }
+
+    const horaLocal = fecha => fecha.toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" });
+
+    function fechaExtremo(extremo) {
+      const desde = new Date(extremo.t * 1000);
+      if (extremo.g <= 60) return diaLocal(desde) + "\n" + horaLocal(desde);
+      // No se pudo bajar a velas de 1 minuto: se muestra el rango real de la vela en hora local
+      // (las velas empiezan en horas UTC, así que su inicio no coincide con el día de Ecuador).
+      const hasta = new Date((extremo.t + extremo.g) * 1000);
+      if (diaLocal(desde) === diaLocal(hasta)) {
+        return diaLocal(desde) + "\nentre " + horaLocal(desde) + " y " + horaLocal(hasta);
+      }
+      return "entre " + diaLocal(desde) + " " + horaLocal(desde) + "\ny " + diaLocal(hasta) + " " + horaLocal(hasta);
+    }
+
+    function mostrarExtremos(fallo) {
+      const listos = extremos && extremos.periodo === periodoActual;
+      if (!listos) {
+        $("minimoValor").textContent = fallo ? "—" : "…";
+        $("maximoValor").textContent = fallo ? "—" : "…";
+        $("minimoFecha").textContent = "";
+        $("maximoFecha").textContent = "";
+        $("extremosFuente").textContent = fallo
+          ? "No se pudo obtener el histórico. Se reintentará en un minuto."
+          : "Buscando…";
+        return;
+      }
+      $("minimoValor").textContent = usd(extremos.minimo.valor);
+      $("minimoFecha").textContent = fechaExtremo(extremos.minimo);
+      $("maximoValor").textContent = usd(extremos.maximo.valor);
+      $("maximoFecha").textContent = fechaExtremo(extremos.maximo);
+      $("extremosFuente").textContent = "Fuente: " + extremos.fuente + (fallo ? " · no se pudo actualizar" : "");
+    }
+
+    async function actualizarExtremos() {
+      const periodo = periodoActual;
+      const solicitud = ++solicitudExtremos;
+      buscandoExtremos = true;
+      mostrarExtremos(false);
+      for (const fuente of HISTORICOS) {
+        try {
+          const resultado = await calcularExtremos(fuente, periodo);
+          if (solicitud !== solicitudExtremos) return;
+          extremos = {
+            minimo: resultado.minimo,
+            maximo: resultado.maximo,
+            fuente: resultado.fuente,
+            periodo,
+            obtenido: Date.now()
+          };
+          incluirPrecioActual();
+          buscandoExtremos = false;
+          mostrarExtremos(false);
+          return;
+        } catch (e) {
+          if (solicitud !== solicitudExtremos) return;
+          // Esta fuente no respondió o vino incompleta; se intenta con la siguiente.
+        }
+      }
+      buscandoExtremos = false;
+      if (extremos && extremos.periodo === periodo) incluirPrecioActual();
+      mostrarExtremos(true);
+    }
+
+    function extremosVencidos() {
+      return !buscandoExtremos && (!extremos || extremos.periodo !== periodoActual ||
+        Date.now() - extremos.obtenido > REFRESCO_EXTREMOS_MS);
+    }
+
+    function marcarPeriodo() {
+      document.querySelectorAll(".periodo").forEach(boton => {
+        const activo = Number(boton.dataset.periodo) === periodoActual;
+        boton.classList.toggle("activo", activo);
+        boton.setAttribute("aria-pressed", String(activo));
+      });
     }
 
     // Acepta coma o punto como separador decimal y de miles:
@@ -445,6 +752,12 @@
         boton.disabled = false;
         boton.textContent = "Consultar BTC";
         calcular();
+        if (extremosVencidos()) {
+          actualizarExtremos();
+        } else if (!buscandoExtremos) {
+          incluirPrecioActual();
+          mostrarExtremos(false);
+        }
       }
     }
 
@@ -452,7 +765,8 @@
       try {
         localStorage.setItem(CLAVE_GUARDADO, JSON.stringify({
           invertido: $("invertido").value,
-          promedio: $("promedio").value
+          promedio: $("promedio").value,
+          periodo: periodoActual
         }));
       } catch (e) {
         // Sin almacenamiento disponible (modo privado); no es crítico.
@@ -465,14 +779,25 @@
         if (datos) {
           if (datos.invertido) $("invertido").value = datos.invertido;
           if (datos.promedio) $("promedio").value = datos.promedio;
+          if (PERIODOS.includes(datos.periodo)) periodoActual = datos.periodo;
         }
       } catch (e) {
         // Datos guardados ilegibles o almacenamiento bloqueado; se usan los valores por defecto.
       }
     }
 
-    $("consultar").addEventListener("click", consultar);
+    $("consultar").addEventListener("click", () => {
+      consultar();
+      if (!buscandoExtremos) actualizarExtremos();
+    });
     ["invertido", "promedio", "precioManual"].forEach(id => $(id).addEventListener("input", calcular));
+
+    document.querySelectorAll(".periodo").forEach(boton => boton.addEventListener("click", () => {
+      periodoActual = Number(boton.dataset.periodo);
+      marcarPeriodo();
+      guardarDatos();
+      actualizarExtremos();
+    }));
 
     setInterval(() => {
       if (!document.hidden) consultar();
@@ -483,6 +808,8 @@
     });
 
     cargarDatos();
+    marcarPeriodo();
+    actualizarExtremos();
     consultar();
   </script>
 
